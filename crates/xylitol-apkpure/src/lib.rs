@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use sha1::{Digest, Sha1};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub use model::{FileKind, Release, SearchHit, Variant};
 
@@ -279,9 +279,18 @@ impl Client {
 
         let mut hasher = Sha1::new();
         let mut file = if resuming {
-            // Re-hash what is already on disk so the final checksum covers it.
-            let existing = tokio::fs::read(&part_path).await?;
-            hasher.update(&existing);
+            // Re-hash what is already on disk so the final checksum covers the
+            // whole file. Streamed, because a resumed bundle can be hundreds of
+            // megabytes and reading it whole would spike memory for nothing.
+            let mut existing = tokio::fs::File::open(&part_path).await?;
+            let mut buffer = vec![0u8; 128 * 1024];
+            loop {
+                let read = existing.read(&mut buffer).await?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
             tokio::fs::OpenOptions::new()
                 .append(true)
                 .open(&part_path)

@@ -260,7 +260,10 @@ async fn download(args: DownloadArgs, json: bool) -> anyhow::Result<()> {
             arch: args.arch.as_deref(),
             kind: args.kind.map(Into::into),
             pick: args.pick,
-            assume_yes: args.yes || json || !std::io::stdin().is_terminal(),
+            assume_yes: args.yes,
+            // --json is a machine-readable mode: never stop to ask on it, even
+            // from a terminal.
+            interactive: !json && std::io::stdin().is_terminal(),
         },
     )?;
 
@@ -316,7 +319,15 @@ async fn download(args: DownloadArgs, json: bool) -> anyhow::Result<()> {
     if show_progress {
         eprintln!();
     }
-    let done = result?;
+    let done = match result {
+        Ok(done) => done,
+        Err(xylitol_core::apkpure::Error::Cancelled) => {
+            // Already reported by the Ctrl-C handler; stopping on request is
+            // not an error worth a non-zero exit and a stack of context.
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     let mut lib = Library::open()?;
     let entry = lib

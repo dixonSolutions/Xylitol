@@ -20,8 +20,10 @@ pub struct Filters<'a> {
     pub kind: Option<FileKind>,
     /// A 1-based index into the unfiltered list.
     pub pick: Option<usize>,
-    /// Take the first remaining candidate rather than prompting.
+    /// Take the first remaining candidate rather than prompting or failing.
     pub assume_yes: bool,
+    /// Whether there is a user on the other end who can be asked.
+    pub interactive: bool,
 }
 
 /// Apply `filters` and return the single file to download.
@@ -45,8 +47,17 @@ pub fn choose<'a>(all: &'a [Variant], filters: Filters<'_>) -> anyhow::Result<&'
             render_table(all)
         ),
         1 => Ok(candidates[0]),
+        // An explicit yes is the only way to have one picked for you. Without
+        // it, a script that asked for something ambiguous stops rather than
+        // fetching an arbitrary ABI that may not even install.
         _ if filters.assume_yes => Ok(candidates[0]),
-        _ => prompt(&candidates),
+        _ if filters.interactive => prompt(&candidates),
+        _ => bail!(
+            "{} files match; narrow it with --pick, --arch, --version-code or \
+             --kind, or pass --yes to take the first:\n{}",
+            candidates.len(),
+            render_rows(&candidates)
+        ),
     }
 }
 
@@ -201,6 +212,26 @@ mod tests {
         assert!(matches_arch(&v, "arm64-v8a"));
         assert!(matches_arch(&v, "armeabi-v7a"));
         assert!(!matches_arch(&v, "x86"));
+    }
+
+    #[test]
+    fn an_ambiguous_choice_fails_rather_than_picking_for_a_script() {
+        let all = sample();
+        let err = choose(
+            &all,
+            Filters {
+                version_code: Some(3),
+                interactive: false,
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("2 files match"), "got: {err}");
+        assert!(
+            err.contains("--pick"),
+            "the error should say how to resolve it"
+        );
     }
 
     #[test]

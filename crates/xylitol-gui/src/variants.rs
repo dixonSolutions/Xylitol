@@ -344,6 +344,13 @@ fn start_download(
                     Ok(done) => {
                         finish(&ctx, &row, &suffix, &variant, done);
                     }
+                    Err(xylitol_core::apkpure::Error::Cancelled) => {
+                        // The partial file is kept, so offer to carry on rather
+                        // than treating the user's own choice as a failure.
+                        button.set_visible(true);
+                        button.set_label("Resume");
+                        ctx.toast("Download stopped");
+                    }
                     Err(e) => {
                         button.set_visible(true);
                         button.set_label("Retry");

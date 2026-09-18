@@ -14,7 +14,19 @@ pub fn load_into(image: &gtk::Image, url: &str) {
     let image = image.clone();
     tasks::spawn(
         async move {
-            let response = reqwest::get(&url).await.ok()?;
+            // The image CDN turns away clients it does not recognise, the same
+            // way the rest of APKPure does.
+            let response = reqwest::Client::builder()
+                .user_agent(
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
+                     (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+                )
+                .build()
+                .ok()?
+                .get(&url)
+                .send()
+                .await
+                .ok()?;
             if !response.status().is_success() {
                 return None;
             }

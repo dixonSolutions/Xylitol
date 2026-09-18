@@ -23,7 +23,6 @@ pub fn releases(html: &str, package: &str) -> Result<Vec<Release>, Error> {
     let doc = Html::parse_document(html);
     let item = sel("div.ver_download_link");
     let tag = sel("span.apk-type-tag");
-    let size = sel("span.ver-item-s");
     let when = sel("span.update-on");
 
     let mut out = Vec::new();
@@ -65,13 +64,7 @@ pub fn releases(html: &str, package: &str) -> Result<Vec<Release>, Error> {
             .select(&when)
             .next()
             .map(text_of)
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                el.select(&size)
-                    .next()
-                    .map(|_| String::new())
-                    .filter(|s| !s.is_empty())
-            });
+            .filter(|s| !s.is_empty());
 
         let has_variants = el.attr("data-dt-variant") == Some("true")
             || el
