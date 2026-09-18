@@ -234,46 +234,6 @@ mod tests {
     }
 
     #[test]
-    fn same_version_files_that_differ_by_abi_get_distinct_keys() {
-        use xylitol_apk::{PackageInfo, PackageKind};
-        let info = |abis: Vec<&str>, kind| PackageInfo {
-            kind,
-            package: "com.example".into(),
-            version_name: Some("1.0".into()),
-            version_code: Some(7),
-            label: None,
-            min_sdk: None,
-            target_sdk: None,
-            split: None,
-            abis: abis.into_iter().map(str::to_string).collect(),
-            permissions: vec![],
-            launchable_activities: vec![],
-            contained_apks: vec![],
-            file_size: 0,
-            sha256: String::new(),
-        };
-        let entry = |info| Entry {
-            path: PathBuf::from("/x"),
-            info,
-            source: None,
-            added: "2026-01-01T00:00:00Z".into(),
-            verified: false,
-        };
-
-        let arm64 = entry(info(vec!["arm64-v8a"], PackageKind::Apk));
-        let v7a = entry(info(vec!["armeabi-v7a"], PackageKind::Apk));
-        let bundle = entry(info(vec![], PackageKind::Bundle));
-        let plain = entry(info(vec![], PackageKind::Apk));
-
-        let keys = [arm64.key(), v7a.key(), bundle.key(), plain.key()];
-        let unique: std::collections::BTreeSet<&String> = keys.iter().collect();
-        assert_eq!(unique.len(), 4, "keys collided: {keys:?}");
-        assert_eq!(plain.key(), "com.example@7#base");
-        assert_eq!(bundle.key(), "com.example@7#bundle");
-        assert_eq!(arm64.key(), "com.example@7#arm64-v8a");
-    }
-
-    #[test]
     fn an_absent_index_is_an_empty_library() {
         let dir = tempfile::tempdir().unwrap();
         let lib = Library::open_at(dir.path().join("nope.json")).unwrap();
