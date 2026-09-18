@@ -27,21 +27,34 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// A stable identifier, as shown by `library list` and taken by `remove`.
     pub fn key(&self) -> String {
-        entry_key(
-            &self.info.package,
-            self.info.version_code,
-            self.info.split.as_deref(),
+        format!(
+            "{}@{}#{}",
+            self.info.package,
+            self.info.version_code.unwrap_or(-1),
+            self.discriminator()
         )
     }
-}
 
-fn entry_key(package: &str, version_code: Option<i64>, split: Option<&str>) -> String {
-    format!(
-        "{package}@{}#{}",
-        version_code.unwrap_or(-1),
-        split.unwrap_or("base")
-    )
+    /// What distinguishes this file from others of the same package and version.
+    ///
+    /// Publishers do not always give per-ABI builds distinct version codes, and
+    /// an APK and a bundle of one version can both exist, so package and version
+    /// alone are not unique — keying on those alone let one download silently
+    /// replace another in the index while both files sat on disk.
+    fn discriminator(&self) -> String {
+        if let Some(split) = &self.info.split {
+            return split.clone();
+        }
+        if self.info.kind == xylitol_apk::PackageKind::Bundle {
+            return "bundle".into();
+        }
+        if self.info.abis.is_empty() {
+            return "base".into();
+        }
+        self.info.abis.join("+")
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -90,10 +103,15 @@ impl Library {
         self.index.entries.is_empty()
     }
 
+    /// The first entry for a package, optionally narrowed to one version.
+    ///
+    /// Several entries can share a package and version — see [`Entry::key`] —
+    /// so this is a lookup, not an identity.
     pub fn get(&self, package: &str, version_code: Option<i64>) -> Option<&Entry> {
-        self.index
-            .entries
-            .get(&entry_key(package, version_code, None))
+        self.index.entries.values().find(|e| {
+            e.info.package == package
+                && version_code.is_none_or(|wanted| e.info.version_code == Some(wanted))
+        })
     }
 
     /// Inspect `path` and record it. Replaces any entry for the same build.
@@ -150,6 +168,53 @@ fn now_rfc3339() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry_with(abis: Vec<&str>, kind: xylitol_apk::PackageKind) -> Entry {
+        Entry {
+            path: PathBuf::from("/x"),
+            info: xylitol_apk::PackageInfo {
+                kind,
+                package: "com.example".into(),
+                version_name: Some("1.0".into()),
+                version_code: Some(7),
+                label: None,
+                min_sdk: None,
+                target_sdk: None,
+                split: None,
+                abis: abis.into_iter().map(str::to_string).collect(),
+                permissions: vec![],
+                launchable_activities: vec![],
+                contained_apks: vec![],
+                file_size: 0,
+                sha256: String::new(),
+            },
+            source: None,
+            added: "2026-01-01T00:00:00Z".into(),
+            verified: false,
+        }
+    }
+
+    #[test]
+    fn files_of_one_version_that_differ_by_abi_or_format_get_distinct_keys() {
+        use xylitol_apk::PackageKind;
+
+        let arm64 = entry_with(vec!["arm64-v8a"], PackageKind::Apk);
+        let v7a = entry_with(vec!["armeabi-v7a"], PackageKind::Apk);
+        let bundle = entry_with(vec![], PackageKind::Bundle);
+        let plain = entry_with(vec![], PackageKind::Apk);
+
+        assert_eq!(plain.key(), "com.example@7#base");
+        assert_eq!(bundle.key(), "com.example@7#bundle");
+        assert_eq!(arm64.key(), "com.example@7#arm64-v8a");
+
+        let keys = [arm64.key(), v7a.key(), bundle.key(), plain.key()];
+        let unique: std::collections::BTreeSet<&String> = keys.iter().collect();
+        assert_eq!(
+            unique.len(),
+            4,
+            "one download would replace another in the index: {keys:?}"
+        );
+    }
 
     #[test]
     fn missing_files_are_forgotten_on_load() {
