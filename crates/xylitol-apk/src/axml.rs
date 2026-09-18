@@ -192,8 +192,11 @@ impl StringPool {
             let (char_len, rest) = read_len16(buf)?;
             let bytes = rest.get(..char_len * 2)?;
             let units: Vec<u16> = bytes
-                .chunks_exact(2)
-                .map(|p| u16::from_le_bytes([p[0], p[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .copied()
+                .map(u16::from_le_bytes)
                 .collect();
             Some(String::from_utf16_lossy(&units))
         }
