@@ -37,7 +37,7 @@ be used right now).
 ### Build requirements
 
 - Rust 1.82 or newer
-- GTK 4.10+ and libadwaita 1.7+ development files
+- GTK 4.10+ and libadwaita 1.4+ development files
 
 ```sh
 # Fedora / Bluefin (inside a toolbox or distrobox)
