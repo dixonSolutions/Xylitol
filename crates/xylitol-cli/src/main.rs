@@ -12,7 +12,7 @@ use anyhow::Context;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use xylitol_core::apkpure::{CancelToken, Client, FileKind, Progress, Variant};
 use xylitol_core::library::Library;
-use xylitol_core::{human_size, paths, runtime};
+use xylitol_core::{human_size, paths, shim as core_shim};
 
 #[derive(Parser)]
 #[command(
@@ -50,12 +50,17 @@ enum Command {
     Download(DownloadArgs),
     /// Show what a local APK or XAPK contains.
     Inspect { file: PathBuf },
+    /// Report whether Xylitol's shim can run an app's native code, and what is
+    /// missing if it cannot. With no file, report what the shim itself can do.
+    Shim {
+        file: Option<PathBuf>,
+        /// List every symbol with no implementation.
+        #[arg(long)]
+        unimplemented: bool,
+    },
     /// Work with downloaded packages.
     #[command(subcommand)]
     Library(LibraryCommand),
-    /// Work with the Android runtime.
-    #[command(subcommand)]
-    Runtime(RuntimeCommand),
 }
 
 #[derive(Args)]
@@ -116,33 +121,6 @@ enum LibraryCommand {
     },
 }
 
-#[derive(Subcommand)]
-enum RuntimeCommand {
-    /// Report which Android runtimes are usable.
-    Status,
-    /// Install a downloaded package into the runtime.
-    Install {
-        /// Library key, as shown by `library list`.
-        key: String,
-        #[arg(long, value_enum, default_value_t = BackendArg::Auto)]
-        backend: BackendArg,
-    },
-    /// Launch an installed app.
-    Launch {
-        package: String,
-        #[arg(long, value_enum, default_value_t = BackendArg::Auto)]
-        backend: BackendArg,
-    },
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
-enum BackendArg {
-    /// Use whichever runtime reports itself ready.
-    Auto,
-    Waydroid,
-    Adb,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -162,8 +140,14 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Download(args) => download(args, cli.json).await,
         Command::Inspect { file } => inspect(&file, cli.json),
+        Command::Shim {
+            file,
+            unimplemented,
+        } => match file {
+            Some(file) => shim(&file, unimplemented, cli.json),
+            None => shim_capability(cli.json),
+        },
         Command::Library(cmd) => library(cmd, cli.json),
-        Command::Runtime(cmd) => runtime_cmd(cmd, cli.json).await,
     }
 }
 
@@ -393,6 +377,112 @@ fn inspect(file: &PathBuf, json: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn shim_capability(json: bool) -> anyhow::Result<()> {
+    let capability = core_shim::capability();
+    if json {
+        return print_json(&capability);
+    }
+    println!("Xylitol runs an app's native code in this process. There is no Android");
+    println!("runtime, emulator or container involved, and no instruction translation:");
+    println!();
+    println!(
+        "  loadable code   {}",
+        capability
+            .host_abi
+            .as_deref()
+            .unwrap_or("none — this CPU is not supported")
+    );
+    println!(
+        "  platform libs   {} known by name",
+        capability.known_libraries
+    );
+    println!(
+        "  implemented     {} symbols",
+        capability.implemented_symbols
+    );
+    println!();
+    println!("Point it at a package to see whether that app can run:");
+    println!("  xylitol-cli shim <file.apk>");
+    Ok(())
+}
+
+fn shim(file: &PathBuf, list_unimplemented: bool, json: bool) -> anyhow::Result<()> {
+    let report = xylitol_shim::report::analyse(file)
+        .with_context(|| format!("analysing {}", file.display()))?;
+    if json {
+        return print_json(&report);
+    }
+
+    println!("{} {}", report.package, report.version);
+    println!(
+        "  host abi   {}",
+        report
+            .host_abi
+            .as_deref()
+            .unwrap_or("unsupported architecture")
+    );
+    println!("  app abis   {}", join_or(&report.available_abis, "none"));
+    if !report.android_libraries.is_empty() {
+        println!("  links      {}", report.android_libraries.join(", "));
+    }
+
+    if !report.objects.is_empty() {
+        println!("\n  native objects loadable here:");
+        for object in &report.objects {
+            let entries: Vec<&str> = object
+                .object
+                .entry_points
+                .iter()
+                .map(|e| e.symbol())
+                .collect();
+            println!(
+                "    {:<44} {:>4} shim {:>4} host {:>4} stub",
+                object.object.path, object.counts.shim, object.counts.host, object.counts.stub
+            );
+            if !entries.is_empty() {
+                println!("      entry points: {}", entries.join(", "));
+            }
+            if object.object.jni_natives > 0 {
+                println!("      {} Java_* natives", object.object.jni_natives);
+            }
+        }
+        let t = report.totals;
+        println!(
+            "\n  symbols    {} total — {} shim, {} host, {} stub",
+            t.total(),
+            t.shim,
+            t.host,
+            t.stub
+        );
+    }
+
+    println!("\n  verdict    {}", report.verdict.headline());
+    if report.verdict.is_runnable() {
+        println!("             (nothing has been executed; this is a reading of the files)");
+    }
+
+    if list_unimplemented && !report.unimplemented.is_empty() {
+        println!("\n  unimplemented ({}):", report.unimplemented.len());
+        for symbol in &report.unimplemented {
+            println!("    {symbol}");
+        }
+    } else if !report.unimplemented.is_empty() {
+        println!(
+            "             pass --unimplemented to list the {} missing symbol(s)",
+            report.unimplemented.len()
+        );
+    }
+    Ok(())
+}
+
+fn join_or(values: &[String], empty: &str) -> String {
+    if values.is_empty() {
+        empty.to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
 fn library(cmd: LibraryCommand, json: bool) -> anyhow::Result<()> {
     let mut lib = Library::open()?;
     match cmd {
@@ -426,78 +516,6 @@ fn library(cmd: LibraryCommand, json: bool) -> anyhow::Result<()> {
         }
     }
     Ok(())
-}
-
-async fn runtime_cmd(cmd: RuntimeCommand, json: bool) -> anyhow::Result<()> {
-    match cmd {
-        RuntimeCommand::Status => {
-            let statuses = runtime::detect().await;
-            if json {
-                let rows: Vec<_> = statuses
-                    .iter()
-                    .map(|s| {
-                        serde_json::json!({
-                            "backend": s.backend.command(),
-                            "installed": s.installed,
-                            "ready": s.ready,
-                            "detail": s.detail,
-                        })
-                    })
-                    .collect();
-                return print_json(&rows);
-            }
-            for s in &statuses {
-                let mark = if s.ready {
-                    "ready"
-                } else if s.installed {
-                    "not ready"
-                } else {
-                    "absent"
-                };
-                println!("{:<14} {:<10} {}", s.backend.label(), mark, s.detail);
-            }
-        }
-        RuntimeCommand::Install { key, backend } => {
-            let lib = Library::open()?;
-            let entry = lib
-                .entries()
-                .into_iter()
-                .find(|e| e.key() == key)
-                .ok_or_else(|| anyhow::anyhow!("no library entry with key {key}"))?
-                .clone();
-            let backend = resolve_backend(backend).await?;
-            println!("Installing via {}...", backend.label());
-            let output = runtime::install(backend, &entry).await?;
-            println!("{output}");
-        }
-        RuntimeCommand::Launch { package, backend } => {
-            let backend = resolve_backend(backend).await?;
-            let output = runtime::launch(backend, &package, None).await?;
-            println!("{output}");
-        }
-    }
-    Ok(())
-}
-
-async fn resolve_backend(arg: BackendArg) -> anyhow::Result<runtime::Backend> {
-    match arg {
-        BackendArg::Waydroid => Ok(runtime::Backend::Waydroid),
-        BackendArg::Adb => Ok(runtime::Backend::Adb),
-        BackendArg::Auto => {
-            let statuses = runtime::detect().await;
-            statuses
-                .iter()
-                .find(|s| s.ready)
-                .map(|s| s.backend)
-                .ok_or_else(|| {
-                    let detail: Vec<String> = statuses
-                        .iter()
-                        .map(|s| format!("{}: {}", s.backend.label(), s.detail))
-                        .collect();
-                    anyhow::anyhow!("no Android runtime is ready.\n  {}", detail.join("\n  "))
-                })
-        }
-    }
 }
 
 fn print_json<T: serde::Serialize>(value: &T) -> anyhow::Result<()> {

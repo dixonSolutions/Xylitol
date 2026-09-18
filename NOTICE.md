@@ -24,6 +24,20 @@ GPL, version 3 or later — see [LICENSE](LICENSE) — which those terms permit.
 signing keys that shipped with the original tree. They are public, well-known
 development keys with no secret value, and are kept only so the copy is faithful.
 
+## Cordial
+
+The shim's design is taken from [Cordial](https://github.com/luohoa97/cordial)
+by luohoa97, which runs Roblox's official Android build on Linux the same way.
+Two ideas in particular are theirs: that every symbol an Android object imports
+resolves to exactly one of *implemented here*, *forwarded to the host's libc*,
+or *not implemented*; and that the third of those must report failure rather
+than fake success, because a stub that returns success sends the app off on an
+answer that is not true and it fails later somewhere unrelated.
+
+Cordial is GPL-3.0-or-later, as is Xylitol. No Cordial code was copied — the
+Rust here was written against the same problem — but the approach is theirs and
+worth saying so plainly.
+
 ## APKPure
 
 Xylitol downloads from [APKPure](https://apkpure.com/), which is not affiliated

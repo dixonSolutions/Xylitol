@@ -3,7 +3,7 @@
 use adw::prelude::*;
 use xylitol_core::human_size;
 use xylitol_core::library::Entry;
-use xylitol_core::runtime;
+use xylitol_core::shim;
 
 use crate::state::Shared;
 use crate::tasks;
@@ -104,15 +104,17 @@ fn row_for(ctx: &Shared, entry: &Entry) -> adw::ExpanderRow {
     ));
     row.add_row(&detail_row("File", &entry.path.to_string_lossy()));
 
-    let install = gtk::Button::builder()
-        .label("Install")
+    let check = gtk::Button::builder()
+        .label("Check")
+        .tooltip_text("See whether Xylitol's shim can run this app")
         .valign(gtk::Align::Center)
         .build();
-    install.add_css_class("suggested-action");
-    install.connect_clicked({
+    check.add_css_class("suggested-action");
+    check.connect_clicked({
         let ctx = ctx.clone();
         let entry = entry.clone();
-        move |button| install_clicked(&ctx, &entry, button.clone())
+        let row = row.clone();
+        move |button| check_clicked(&ctx, &entry, &row, button.clone())
     });
 
     let remove = gtk::Button::builder()
@@ -140,7 +142,7 @@ fn row_for(ctx: &Shared, entry: &Entry) -> adw::ExpanderRow {
 
     let suffix = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     suffix.set_valign(gtk::Align::Center);
-    suffix.append(&install);
+    suffix.append(&check);
     suffix.append(&remove);
     row.add_suffix(&suffix);
 
@@ -155,40 +157,49 @@ fn detail_row(title: &str, value: &str) -> adw::ActionRow {
         .build()
 }
 
-fn install_clicked(ctx: &Shared, entry: &Entry, button: gtk::Button) {
+/// Ask the shim what it makes of this package, and show the answer in place.
+fn check_clicked(ctx: &Shared, entry: &Entry, row: &adw::ExpanderRow, button: gtk::Button) {
     button.set_sensitive(false);
-    button.set_label("Installing…");
+    button.set_label("Checking…");
 
     let entry = entry.clone();
-    tasks::spawn(
-        async move {
-            let statuses = runtime::detect().await;
-            let Some(ready) = statuses.iter().find(|s| s.ready) else {
-                let detail: Vec<String> = statuses
-                    .iter()
-                    .map(|s| format!("{}: {}", s.backend.label(), s.detail))
-                    .collect();
-                return Err(anyhow::anyhow!(
-                    "no Android runtime is ready — {}",
-                    detail.join("; ")
-                ));
-            };
-            runtime::install(ready.backend, &entry).await
-        },
-        {
-            let ctx = ctx.clone();
-            move |outcome: anyhow::Result<String>| {
-                button.set_sensitive(true);
-                button.set_label("Install");
-                match outcome {
-                    Ok(output) => ctx.toast(if output.is_empty() {
-                        "Installed".to_string()
+    tasks::spawn(async move { shim::check(&entry) }, {
+        let ctx = ctx.clone();
+        let row = row.clone();
+        move |outcome: anyhow::Result<shim::Report>| {
+            button.set_sensitive(true);
+            button.set_label("Check");
+            match outcome {
+                Ok(report) => {
+                    let verdict = report.verdict.headline();
+                    row.add_row(&detail_row("Shim verdict", &verdict));
+                    if report.totals.total() > 0 {
+                        row.add_row(&detail_row(
+                            "Symbols",
+                            &format!(
+                                "{} total — {} shim, {} host, {} unimplemented",
+                                report.totals.total(),
+                                report.totals.shim,
+                                report.totals.host,
+                                report.totals.stub
+                            ),
+                        ));
+                    }
+                    if !report.android_libraries.is_empty() {
+                        row.add_row(&detail_row(
+                            "Links against",
+                            &report.android_libraries.join(", "),
+                        ));
+                    }
+                    row.set_expanded(true);
+                    ctx.toast(if report.verdict.is_runnable() {
+                        "This app's native code can be loaded here"
                     } else {
-                        output
-                    }),
-                    Err(e) => ctx.toast_error("Install failed", e),
+                        "This app cannot run under the shim yet"
+                    });
                 }
+                Err(e) => ctx.toast_error("Could not analyse the package", e),
             }
-        },
-    );
+        }
+    });
 }

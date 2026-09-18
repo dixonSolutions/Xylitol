@@ -6,11 +6,14 @@ libadwaita app in Rust.
 **[Install](#flatpak)** · **[Download page](https://dixonsolutions.github.io/Xylitol/)**
 
 Xylitol is a copy of [Shashlik][shashlik], restarted. Shashlik set out in 2014
-to run Android apps on the desktop by carrying its own AOSP-derived runtime, and
-stopped in November 2015 when that became untenable. Xylitol keeps the goal and
-drops the runtime: it handles finding, choosing, verifying and inspecting
-packages itself, and hands the finished file to an Android runtime that is
-already on the system. See [NOTICE.md](NOTICE.md) for what was copied and why.
+to run Android apps on the desktop and stopped in November 2015. Xylitol keeps
+the goal: it finds, downloads, verifies and inspects packages, and then runs an
+app's native code **in its own process** — no Android runtime, no emulator, no
+container, and no instruction translation.
+
+The shim approach is taken from [Cordial][cordial], which runs Roblox's official
+Android build on Linux this way. See [NOTICE.md](NOTICE.md) for what was copied
+and from where.
 
 ## What it does
 
@@ -25,14 +28,17 @@ already on the system. See [NOTICE.md](NOTICE.md) for what was copied and why.
 - **Read the package.** Xylitol parses `AndroidManifest.xml` itself — no Android
   SDK needed — to show the real package name, version, ABIs, minimum SDK and
   the permissions the app will request.
-- **Install it** through Waydroid or `adb`, including XAPK bundles, which are
-  unpacked and installed as a single split transaction.
+- **Say whether it can actually run.** Before anything is executed, Xylitol
+  reads every native object an app ships and classifies every symbol it imports
+  into one of three routes — implemented here, forwarded to the host's libc, or
+  not implemented. An app is then a candidate, or it is not, and the reason is
+  specific.
 
 ## Screens
 
 The app has three: **Discover** (search and pick a file), **Library** (what you
-have downloaded, and what is in it) and **Runtime** (which Android runtime can
-be used right now).
+have downloaded, what is in it, and what the shim makes of it) and **Shim**
+(what this machine can load).
 
 ## Install
 
@@ -70,26 +76,20 @@ work.
 
 #### What the sandbox allows
 
-Xylitol asks for network access, a Wayland or X11 socket, read-only access to
-your download folder, and `--talk-name=org.freedesktop.Flatpak`. That last one lets it run commands on the
-host through `flatpak-spawn --host`, which is the only way a sandboxed app can
-drive Waydroid or `adb`. It is a broad permission — an app that can spawn host
-processes is not meaningfully confined — so it is worth knowing it is there.
+Xylitol asks for network access, a Wayland or X11 socket, and read-only access
+to your download folder. That is all: the shim runs the app's code in-process
+rather than driving anything on the host, so it needs no way out of the sandbox
+— no `--talk-name=org.freedesktop.Flatpak`, no `flatpak-spawn`.
 
-Revoking it leaves everything except installing:
-
-```sh
-flatpak override --user --notalk-name=org.freedesktop.Flatpak dev.xylitol.Xylitol
-```
-
-Searching, downloading and inspecting all still work; the Install button will
-report that no runtime is reachable.
+Note what that means for the app's code, though. It runs inside Xylitol's
+process, with Xylitol's permissions. The Flatpak sandbox is the boundary; the
+shim is not one.
 
 Everything Xylitol downloads goes to its own data directory, which it can always
-reach. The download-folder permission is only so that `xylitol-cli inspect` and
-`library add` can read an APK you obtained some other way; without it they fail
-with "No such file or directory" on a path that plainly exists. You can still install the downloaded file
-yourself with `waydroid app install` or `adb install` on the host.
+reach. The download-folder permission is only so that `xylitol-cli inspect`,
+`shim` and `library add` can read an APK you obtained some other way; without it
+they fail with "No such file or directory" on a path that plainly exists.
+
 
 ### Build requirements
 
@@ -198,8 +198,31 @@ Inspect anything you have, whether Xylitol downloaded it or not:
 ```sh
 xylitol-cli inspect ~/Downloads/something.apk
 xylitol-cli library list
-xylitol-cli runtime status
-xylitol-cli runtime install 'org.videolan.vlc@13070105#armeabi-v7a'
+```
+
+Ask whether an app can run, and why not:
+
+```sh
+xylitol-cli shim                             # what this machine can load
+xylitol-cli shim ~/Downloads/something.apk   # what this app needs
+xylitol-cli shim ~/Downloads/something.apk --unimplemented
+```
+
+```
+com.termux 0.118.3 (1002)
+  host abi   x86_64
+  app abis   arm64-v8a, armeabi-v7a, x86, x86_64
+  links      libc.so, libdl.so, libm.so, libstdc++.so
+
+  native objects loadable here:
+    lib/x86_64/libtermux.so                         0 shim   33 host    0 stub
+      5 Java_* natives
+
+  symbols    36 total — 0 shim, 36 host, 0 stub
+
+  verdict    native code exists but only as a JNI library (6 Java_* entry
+             point(s)); something has to run the app's Java before any of it
+             is called
 ```
 
 A library key is `package@versionCode#what-makes-it-distinct`, where the last
@@ -218,9 +241,7 @@ Add `--json` to any command for machine-readable output.
 Override with `XYLITOL_DOWNLOAD_DIR` and `XYLITOL_STATE_DIR`. Set `XYLITOL_LOG`
 (`error`, `warn`, `info`, `debug`) for logging.
 
-Under Flatpak these land in `~/.var/app/dev.xylitol.Xylitol/`. That is a real
-directory on the host, which is why a host-side `waydroid` or `adb` can read a
-package Xylitol downloaded without anything being copied out of the sandbox.
+Under Flatpak these land in `~/.var/app/dev.xylitol.Xylitol/`.
 
 ## How it is put together
 
@@ -228,7 +249,8 @@ package Xylitol downloaded without anything being copied out of the sandbox.
 | --- | --- |
 | [`xylitol-apk`](crates/xylitol-apk) | Reads APKs and XAPKs: a binary `AndroidManifest.xml` decoder and the metadata on top of it |
 | [`xylitol-apkpure`](crates/xylitol-apkpure) | The APKPure client: search, release history, variant listing, resumable verified downloads |
-| [`xylitol-core`](crates/xylitol-core) | The library index, XDG paths, and the Waydroid/adb handoff |
+| [`xylitol-shim`](crates/xylitol-shim) | The shim: reads native objects, routes every symbol, implements bionic's deltas |
+| [`xylitol-core`](crates/xylitol-core) | The library index, XDG paths, and the front-ends' view of the shim |
 | [`xylitol-cli`](crates/xylitol-cli) | The command line, including the selection rules |
 | [`xylitol-gui`](crates/xylitol-gui) | The libadwaita app |
 
@@ -270,12 +292,39 @@ clients re-fetch the app rather than applying a delta.
 There is no tagged, versioned release yet. When there is, it will be cut by tag
 and the `continuous` build will stay where it is.
 
-## What Xylitol does not do
+## How the shim works
 
-It does not run Android. Reviving Shashlik's runtime would mean maintaining an
-Android 4.4-era AOSP tree and its Wayland `gralloc`/`hwcomposer` shims, which is
-what killed the original. Waydroid already does that job properly, so Xylitol
-drives it rather than competing with it.
+An Android `.so` is an ordinary ELF shared object. The format is not the problem;
+what it links against is. It names `libc.so`, `libandroid.so`, `liblog.so` — and
+those are bionic and the Android framework, not anything on a Linux desktop.
+
+So every symbol an app imports has to resolve one of three ways, and Xylitol
+reports the split rather than asking to be trusted:
+
+| route | meaning |
+| --- | --- |
+| **shim** | Xylitol implements it, because bionic does something glibc does not |
+| **host** | forwarded to the host's own libc, because the two agree |
+| **stub** | not implemented, and it **reports failure** rather than faking success |
+
+That last row is a rule, not an accident, and it is [Cordial's][cordial]. A stub
+that returns success sends the app off on an answer that is not true, and it
+fails later somewhere with no relationship to the cause.
+
+## What Xylitol cannot do yet
+
+**It cannot run an app written in Java or Kotlin**, which is most of them. Such
+an app keeps its logic in DEX bytecode and calls the `android.*` framework
+classes; running one needs a bytecode interpreter and those classes, and Xylitol
+has neither. The apps this approach reaches first are the ones whose logic is
+already native — NativeActivity and GameActivity games.
+
+**It cannot run code for another CPU.** The shim maps an app's objects into its
+own address space, so an arm64 app needs an arm64 machine. Translating would
+mean an emulator, which is the thing this exists to avoid.
+
+`xylitol-cli shim <file>` tells you which of these an app falls under, before
+anything is executed.
 
 ## Licence
 
@@ -283,3 +332,4 @@ GPL-3.0-or-later. The copied Shashlik sources under `legacy/` keep their own
 LGPL-2.0-or-later terms. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
 
 [shashlik]: https://github.com/shashlik/old-shashlik
+[cordial]: https://github.com/luohoa97/cordial

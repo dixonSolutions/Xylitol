@@ -3,7 +3,7 @@
 mod discover;
 mod icons;
 mod library_page;
-mod runtime_page;
+mod shim_page;
 mod state;
 mod tasks;
 mod variants;

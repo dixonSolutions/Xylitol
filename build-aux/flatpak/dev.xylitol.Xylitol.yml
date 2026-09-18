@@ -23,10 +23,6 @@ finish-args:
   # app's own data directory, and a host-side adb reads the file with the host's
   # permissions rather than ours.
   - --filesystem=xdg-download:ro
-  # Installing a package means driving Waydroid or adb, which live on the host.
-  # Without this the app still searches, downloads and inspects; only the
-  # Install button stops working. See the README for what this permission means.
-  - --talk-name=org.freedesktop.Flatpak
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin

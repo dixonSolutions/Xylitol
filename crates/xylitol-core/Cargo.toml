@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 xylitol-apk = { path = "../xylitol-apk", version = "0.1.0" }
 xylitol-apkpure = { path = "../xylitol-apkpure", version = "0.1.0" }
+xylitol-shim = { path = "../xylitol-shim", version = "0.1.0" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

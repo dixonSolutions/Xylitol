@@ -24,8 +24,11 @@
       before anything is installed.
     </p>
     <p>
-      Installing is handed to an Android runtime already on the system:
-      Waydroid, or any device reachable over adb.
+      Xylitol runs an app's native code in its own process, with no Android
+      runtime, emulator or container involved. Apps whose logic is native are
+      the ones this reaches; one written in Java or Kotlin needs a bytecode
+      interpreter and the framework classes, which Xylitol does not have yet.
+      It will tell you which of the two an app is.
     </p>
   </description>
 
@@ -54,8 +57,8 @@
     <release version="0.1.0" date="2026-09-18">
       <description>
         <p>First release: APKPure search, per-architecture file selection,
-        resumable verified downloads, package inspection, and installation
-        through Waydroid or adb.</p>
+        resumable verified downloads, package inspection, and a native shim
+        that reports whether an app's own code can run here.</p>
       </description>
     </release>
   </releases>

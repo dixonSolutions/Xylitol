@@ -4,6 +4,7 @@ members = [
     "crates/xylitol-apk",
     "crates/xylitol-apkpure",
     "crates/xylitol-core",
+    "crates/xylitol-shim",
     "crates/xylitol-cli",
     "crates/xylitol-gui",
 ]

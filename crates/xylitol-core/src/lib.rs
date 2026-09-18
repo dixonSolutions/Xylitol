@@ -1,15 +1,16 @@
 //! Shared logic behind both Xylitol front-ends.
 //!
 //! The GUI and the CLI are thin: everything they do — searching APKPure,
-//! choosing a build, downloading it, reading what it contains and handing it to
-//! an Android runtime — lives here.
+//! choosing a build, downloading it, reading what it contains and deciding
+//! whether Xylitol's own shim can run it — lives here.
 
 pub mod library;
 pub mod paths;
-pub mod runtime;
+pub mod shim;
 
 pub use xylitol_apk as apk;
 pub use xylitol_apkpure as apkpure;
+pub use xylitol_shim as shim_core;
 
 /// Format a byte count the way the UI shows it.
 pub fn human_size(bytes: u64) -> String {

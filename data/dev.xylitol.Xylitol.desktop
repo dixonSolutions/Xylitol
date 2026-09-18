@@ -2,10 +2,10 @@
 Type=Application
 Name=Xylitol
 GenericName=Android Package Manager
-Comment=Find, download and install Android packages
+Comment=Find, download and run Android packages
 Exec=xylitol
 Icon=dev.xylitol.Xylitol
 Terminal=false
 Categories=System;PackageManager;
-Keywords=Android;APK;XAPK;APKPure;Waydroid;
+Keywords=Android;APK;XAPK;APKPure;NativeActivity;
 StartupNotify=true

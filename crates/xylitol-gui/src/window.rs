@@ -6,7 +6,7 @@ use xylitol_core::library::Library;
 use xylitol_core::paths::APP_ID;
 
 use crate::state::{Ctx, Shared};
-use crate::{discover, library_page, runtime_page};
+use crate::{discover, library_page, shim_page};
 
 pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     let nav = adw::NavigationView::new();
@@ -40,10 +40,10 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
         "folder-download-symbolic",
     );
     stack.add_titled_with_icon(
-        &runtime_page::build(&ctx),
-        Some("runtime"),
-        "Runtime",
-        "phone-symbolic",
+        &shim_page::build(&ctx),
+        Some("shim"),
+        "Shim",
+        "cpu-symbolic",
     );
 
     let switcher = adw::ViewSwitcher::builder()
@@ -167,12 +167,12 @@ fn show_about(window: &adw::ApplicationWindow) {
         .website("https://github.com/dixonSolutions/Xylitol")
         .issue_url("https://github.com/dixonSolutions/Xylitol/issues")
         .comments(
-            "Find, download and install Android packages.\n\n\
+            "Find, download and run Android packages.\n\n\
              Xylitol is a restart of Shashlik, which set out in 2014 to run \
-             Android apps on the desktop by carrying its own AOSP-derived \
-             runtime. Xylitol keeps the goal and drops the runtime: it finds, \
-             chooses, verifies and inspects packages itself, and installs them \
-             through Waydroid or adb.",
+             Android apps on the Linux desktop. It finds, downloads, verifies \
+             and inspects packages, then runs an app's native code in its own \
+             process — no Android runtime, emulator or container.\n\n\
+             The shim approach is taken from Cordial.",
         )
         .build();
     about.add_credit_section(
