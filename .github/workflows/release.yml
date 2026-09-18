@@ -34,9 +34,10 @@ jobs:
           bundle: xylitol.flatpak
           manifest-path: build-aux/flatpak/dev.xylitol.Xylitol.yml
           arch: x86_64
-          # The ostree repo is what gets published; the bundle is for people
-          # who would rather install a single file.
-          repository-name: xylitol
+          # `repository-name` would name the remote to fetch the runtime FROM,
+          # not the repo being produced, so it stays at its flathub default.
+          # The build writes its ostree repo to ./repo either way; the bundle is
+          # for people who would rather install a single file.
           cache-key: flatpak-${{ hashFiles('build-aux/flatpak/dev.xylitol.Xylitol.yml', 'Cargo.lock') }}
 
       - name: Sign and finalise the repo
