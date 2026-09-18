@@ -88,7 +88,7 @@ yourself with `waydroid app install` or `adb install` on the host.
 
 ### Build requirements
 
-- Rust 1.82 or newer
+- Rust 1.92 or newer (what the `gtk4` 0.11 bindings require)
 - GTK 4.10+ and libadwaita 1.4+ development files
 
 ```sh
@@ -117,11 +117,15 @@ cargo build --release
 ### Flatpak, from source
 
 ```sh
-flatpak install --user flathub org.gnome.Platform//48 org.gnome.Sdk//48 \
-    org.freedesktop.Sdk.Extension.rust-stable//24.08
+flatpak install --user flathub org.gnome.Platform//49 org.gnome.Sdk//49 \
+    org.freedesktop.Sdk.Extension.rust-stable//25.08
 flatpak-builder --user --install --force-clean \
     build/flatpak build-aux/flatpak/dev.xylitol.Xylitol.yml
 ```
+
+The GNOME 49 runtime is required rather than preferred: its
+`rust-stable` extension carries rustc 1.98, and the `gtk4` 0.11 bindings need
+at least 1.92. The 48 runtime ships 1.89 and cannot build this.
 
 The manifest resolves crates from the network during the build rather than
 carrying a generated `cargo-sources.json`. That is one less file to regenerate
