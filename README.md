@@ -70,8 +70,8 @@ work.
 
 #### What the sandbox allows
 
-Xylitol asks for network access, a Wayland or X11 socket, and
-`--talk-name=org.freedesktop.Flatpak`. That last one lets it run commands on the
+Xylitol asks for network access, a Wayland or X11 socket, read-only access to
+your download folder, and `--talk-name=org.freedesktop.Flatpak`. That last one lets it run commands on the
 host through `flatpak-spawn --host`, which is the only way a sandboxed app can
 drive Waydroid or `adb`. It is a broad permission — an app that can spawn host
 processes is not meaningfully confined — so it is worth knowing it is there.
@@ -83,7 +83,12 @@ flatpak override --user --notalk-name=org.freedesktop.Flatpak dev.xylitol.Xylito
 ```
 
 Searching, downloading and inspecting all still work; the Install button will
-report that no runtime is reachable. You can still install the downloaded file
+report that no runtime is reachable.
+
+Everything Xylitol downloads goes to its own data directory, which it can always
+reach. The download-folder permission is only so that `xylitol-cli inspect` and
+`library add` can read an APK you obtained some other way; without it they fail
+with "No such file or directory" on a path that plainly exists. You can still install the downloaded file
 yourself with `waydroid app install` or `adb install` on the host.
 
 ### Build requirements

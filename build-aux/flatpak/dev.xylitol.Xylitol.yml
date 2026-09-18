@@ -18,6 +18,11 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  # Read access to the download folder, so `inspect` and `library add` work on a
+  # file you already have. Read-only is enough: the library index lives in the
+  # app's own data directory, and a host-side adb reads the file with the host's
+  # permissions rather than ours.
+  - --filesystem=xdg-download:ro
   # Installing a package means driving Waydroid or adb, which live on the host.
   # Without this the app still searches, downloads and inspects; only the
   # Install button stops working. See the README for what this permission means.
