@@ -3,8 +3,9 @@
 use adw::prelude::*;
 use xylitol_core::apkpure::Client;
 use xylitol_core::library::Library;
+use xylitol_core::paths::APP_ID;
 
-use crate::state::Ctx;
+use crate::state::{Ctx, Shared};
 use crate::{discover, library_page, runtime_page};
 
 pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
@@ -52,6 +53,7 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
 
     let header = adw::HeaderBar::new();
     header.set_title_widget(Some(&switcher));
+    header.pack_end(&primary_menu_button());
 
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
@@ -91,9 +93,95 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     );
     window.add_breakpoint(breakpoint);
 
+    install_actions(app, &window, &ctx);
+
     if let Some(error) = library_error {
         ctx.toast_error("Could not open the library", error);
     }
 
     window
+}
+
+fn primary_menu_button() -> gtk::MenuButton {
+    let menu = gtk::gio::Menu::new();
+    menu.append(Some("Open Download Folder"), Some("app.open-downloads"));
+    menu.append(Some("About Xylitol"), Some("app.about"));
+
+    gtk::MenuButton::builder()
+        .icon_name("open-menu-symbolic")
+        .tooltip_text("Main Menu")
+        .menu_model(&menu)
+        .primary(true)
+        .build()
+}
+
+fn install_actions(app: &adw::Application, window: &adw::ApplicationWindow, ctx: &Shared) {
+    let about = gtk::gio::SimpleAction::new("about", None);
+    about.connect_activate({
+        let window = window.clone();
+        move |_, _| show_about(&window)
+    });
+    app.add_action(&about);
+
+    let open_downloads = gtk::gio::SimpleAction::new("open-downloads", None);
+    open_downloads.connect_activate({
+        let ctx = ctx.clone();
+        let window = window.clone();
+        move |_, _| {
+            let dir = xylitol_core::paths::download_dir();
+            // The folder only exists once something has been downloaded.
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                ctx.toast_error("Could not open the download folder", e);
+                return;
+            }
+            let launcher = gtk::FileLauncher::new(Some(&gtk::gio::File::for_path(&dir)));
+            launcher.launch(Some(&window), gtk::gio::Cancellable::NONE, {
+                let ctx = ctx.clone();
+                move |result| {
+                    if let Err(e) = result {
+                        ctx.toast_error("Could not open the download folder", e);
+                    }
+                }
+            });
+        }
+    });
+    app.add_action(&open_downloads);
+
+    let quit = gtk::gio::SimpleAction::new("quit", None);
+    quit.connect_activate({
+        let app = app.clone();
+        move |_, _| app.quit()
+    });
+    app.add_action(&quit);
+    app.set_accels_for_action("app.quit", &["<Control>q"]);
+}
+
+fn show_about(window: &adw::ApplicationWindow) {
+    let about = adw::AboutWindow::builder()
+        .transient_for(window)
+        .application_name("Xylitol")
+        .application_icon(APP_ID)
+        .version(env!("CARGO_PKG_VERSION"))
+        .developer_name("The Xylitol contributors")
+        .license_type(gtk::License::Gpl30)
+        .website("https://github.com/dixonSolutions/Xylitol")
+        .issue_url("https://github.com/dixonSolutions/Xylitol/issues")
+        .comments(
+            "Find, download and install Android packages.\n\n\
+             Xylitol is a restart of Shashlik, which set out in 2014 to run \
+             Android apps on the desktop by carrying its own AOSP-derived \
+             runtime. Xylitol keeps the goal and drops the runtime: it finds, \
+             chooses, verifies and inspects packages itself, and installs them \
+             through Waydroid or adb.",
+        )
+        .build();
+    about.add_credit_section(
+        Some("Based on work by"),
+        &[
+            "Dan Leinir Turthra Jensen",
+            "Inge Wallin",
+            "The Shashlik contributors",
+        ],
+    );
+    about.present();
 }
