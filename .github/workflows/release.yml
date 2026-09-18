@@ -1,0 +1,233 @@
+name: Release
+
+# Every commit on main publishes a new build to the Flatpak remote hosted on
+# GitHub Pages, so `flatpak update` is all a user ever needs.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Never let two publishes race for the same remote, and never cancel one
+# half-way: an interrupted deploy would leave the repo summary inconsistent.
+concurrency:
+  group: flatpak-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the Flatpak
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: xylitol.flatpak
+          manifest-path: build-aux/flatpak/dev.xylitol.Xylitol.yml
+          arch: x86_64
+          # The ostree repo is what gets published; the bundle is for people
+          # who would rather install a single file.
+          repository-name: xylitol
+          cache-key: flatpak-${{ hashFiles('build-aux/flatpak/dev.xylitol.Xylitol.yml', 'Cargo.lock') }}
+
+      - name: Sign and finalise the repo
+        env:
+          # Optional. Without it the remote is unsigned and users add it with
+          # --no-gpg-verify; see the README for how to turn signing on.
+          GPG_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+        run: |
+          set -eux
+          mkdir -p site
+          if [ -n "${GPG_KEY:-}" ]; then
+            GNUPGHOME=$(mktemp -d); export GNUPGHOME
+            echo "$GPG_KEY" | base64 -d | gpg --batch --import
+            KEY_ID=$(gpg --list-keys --with-colons | awk -F: '/^pub/{print $5; exit}')
+            flatpak build-sign repo --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
+            flatpak build-update-repo repo --generate-static-deltas --prune \
+              --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
+            gpg --export "$KEY_ID" > site/xylitol.gpg
+            base64 -w0 site/xylitol.gpg > gpg-key.b64
+          else
+            flatpak build-update-repo repo --generate-static-deltas --prune
+          fi
+
+      - name: Assemble the Pages site
+        run: |
+          set -eux
+          # github.io hosts are lowercase; the path after them is not.
+          OWNER=$(echo "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')
+          PAGES_URL="https://${OWNER}.github.io/${GITHUB_REPOSITORY##*/}"
+          mv repo site/repo
+          cp xylitol.flatpak site/xylitol.flatpak
+          cp data/icons/hicolor/scalable/apps/dev.xylitol.Xylitol.svg site/icon.svg
+
+          # The .flatpakrepo file is what `flatpak remote-add` consumes.
+          {
+            echo "[Flatpak Repo]"
+            echo "Title=Xylitol"
+            echo "Url=${PAGES_URL}/repo/"
+            echo "Homepage=https://github.com/${GITHUB_REPOSITORY}"
+            echo "Icon=${PAGES_URL}/icon.svg"
+            echo "Comment=Find, download and install Android packages"
+            echo "Description=Builds of Xylitol, published on every commit to main."
+            if [ -f gpg-key.b64 ]; then echo "GPGKey=$(cat gpg-key.b64)"; fi
+          } > site/xylitol.flatpakrepo
+
+          # A landing page, so the Pages URL is useful to a human too.
+          SIGNED_NOTE="This remote is <strong>not signed</strong>. \
+            <code>--no-gpg-verify</code> is required; transport integrity comes \
+            from HTTPS."
+          REMOTE_ADD="flatpak remote-add --if-not-exists --no-gpg-verify \\\\<br>&nbsp;&nbsp;xylitol ${PAGES_URL}/xylitol.flatpakrepo"
+          if [ -f gpg-key.b64 ]; then
+            SIGNED_NOTE="This remote is signed; its key travels in the .flatpakrepo file."
+            REMOTE_ADD="flatpak remote-add --if-not-exists \\\\<br>&nbsp;&nbsp;xylitol ${PAGES_URL}/xylitol.flatpakrepo"
+          fi
+
+          cat > site/index.html <<HTML
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Xylitol</title>
+            <link rel="icon" href="icon.svg" type="image/svg+xml">
+            <style>
+              :root {
+                color-scheme: light dark;
+                --bg: #fafafa; --fg: #1a1a1a; --muted: #5c5c5c;
+                --card: #ffffff; --line: #e0e0e0; --accent: #1a5fb4;
+              }
+              @media (prefers-color-scheme: dark) {
+                :root {
+                  --bg: #1b1b1b; --fg: #ededed; --muted: #a8a8a8;
+                  --card: #252525; --line: #3a3a3a; --accent: #99c1f1;
+                }
+              }
+              * { box-sizing: border-box; }
+              body {
+                margin: 0; padding: 48px 16px; background: var(--bg); color: var(--fg);
+                font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+              }
+              main { max-width: 680px; margin: 0 auto; }
+              header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+              header img { width: 64px; height: 64px; }
+              h1 { font-size: 2rem; margin: 0; }
+              .tagline { color: var(--muted); margin: 0 0 32px; }
+              h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+              pre {
+                background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+                padding: 14px 16px; overflow-x: auto; font-size: 0.875rem;
+              }
+              code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+              .note {
+                border-left: 3px solid var(--accent); padding: 4px 0 4px 14px;
+                color: var(--muted); font-size: 0.925rem;
+              }
+              a { color: var(--accent); }
+              footer { margin-top: 48px; color: var(--muted); font-size: 0.875rem; }
+            </style>
+          </head>
+          <body>
+            <main>
+              <header>
+                <img src="icon.svg" alt="">
+                <h1>Xylitol</h1>
+              </header>
+              <p class="tagline">Find, download and install Android packages on the Linux desktop.</p>
+
+              <h2>Install</h2>
+              <pre><code>${REMOTE_ADD}<br>flatpak install xylitol dev.xylitol.Xylitol</code></pre>
+              <p class="note">${SIGNED_NOTE}</p>
+
+              <h2>Or install a single bundle</h2>
+              <pre><code>flatpak install --bundle xylitol.flatpak</code></pre>
+              <p class="note">
+                A bundle does not update itself. Use the remote above if you want
+                <code>flatpak update</code> to work.
+              </p>
+
+              <h2>Run</h2>
+              <pre><code>flatpak run dev.xylitol.Xylitol<br>flatpak run --command=xylitol-cli dev.xylitol.Xylitol --help</code></pre>
+
+              <footer>
+                Built from <a href="https://github.com/${GITHUB_REPOSITORY}">${GITHUB_REPOSITORY}</a>,
+                commit <code>${GITHUB_SHA}</code>. Published on every commit to main.
+              </footer>
+            </main>
+          </body>
+          </html>
+          HTML
+
+          # Pages serves this tree verbatim; Jekyll would eat the ostree objects.
+          touch site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xylitol-flatpak-bundle
+          path: site/xylitol.flatpak
+
+  deploy:
+    name: Publish the Flatpak remote
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  bundle:
+    name: Update the rolling release
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: xylitol-flatpak-bundle
+
+      # One rolling release rather than a tag per commit: the Flatpak remote is
+      # where updates actually come from, and hundreds of tags would bury any
+      # real versioned release.
+      - name: Update `continuous`
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eux
+          OWNER=$(echo "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')
+          PAGES_URL="https://${OWNER}.github.io/${GITHUB_REPOSITORY##*/}"
+          NOTES=$(printf '%s\n' \
+            "Latest build of \`main\` (\`${GITHUB_SHA:0:7}\`)." \
+            "" \
+            "Install from the Flatpak remote, which updates on every commit:" \
+            "" \
+            '```sh' \
+            "flatpak remote-add --if-not-exists --no-gpg-verify xylitol ${PAGES_URL}/xylitol.flatpakrepo" \
+            "flatpak install xylitol dev.xylitol.Xylitol" \
+            '```' \
+            "" \
+            "Or install the attached bundle directly, which will not auto-update:" \
+            "" \
+            '```sh' \
+            "flatpak install --bundle xylitol.flatpak" \
+            '```')
+          gh release delete continuous --yes --cleanup-tag 2>/dev/null || true
+          gh release create continuous xylitol.flatpak \
+            --title "Continuous build" \
+            --notes "$NOTES" \
+            --prerelease \
+            --target "$GITHUB_SHA"

@@ -6,6 +6,10 @@
   <name>Xylitol</name>
   <summary>Find, download and install Android packages</summary>
 
+  <developer id="dev.xylitol">
+    <name>The Xylitol contributors</name>
+  </developer>
+
   <description>
     <p>
       Xylitol searches APKPure, shows every file a release ships — one per

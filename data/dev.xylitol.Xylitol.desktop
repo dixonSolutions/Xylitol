@@ -6,6 +6,6 @@ Comment=Find, download and install Android packages
 Exec=xylitol
 Icon=dev.xylitol.Xylitol
 Terminal=false
-Categories=System;PackageManager;Utility;
+Categories=System;PackageManager;
 Keywords=Android;APK;XAPK;APKPure;Waydroid;
 StartupNotify=true

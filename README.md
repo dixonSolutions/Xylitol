@@ -3,6 +3,8 @@
 Find, download and install Android packages on the Linux desktop — a GTK 4 /
 libadwaita app in Rust.
 
+**[Install](#flatpak)** · **[Download page](https://dixonsolutions.github.io/Xylitol/)**
+
 Xylitol is a copy of [Shashlik][shashlik], restarted. Shashlik set out in 2014
 to run Android apps on the desktop by carrying its own AOSP-derived runtime, and
 stopped in November 2015 when that became untenable. Xylitol keeps the goal and
@@ -34,6 +36,56 @@ be used right now).
 
 ## Install
 
+### Flatpak
+
+Every commit to `main` is published to a Flatpak remote hosted on GitHub Pages,
+so `flatpak update` is all you need after the first install.
+
+```sh
+flatpak remote-add --if-not-exists --no-gpg-verify \
+    xylitol https://dixonsolutions.github.io/Xylitol/xylitol.flatpakrepo
+flatpak install xylitol dev.xylitol.Xylitol
+```
+
+```sh
+flatpak run dev.xylitol.Xylitol                          # the app
+flatpak run --command=xylitol-cli dev.xylitol.Xylitol    # the command line
+```
+
+`--no-gpg-verify` is needed because the remote is unsigned by default. The
+transport is HTTPS, so this is not the same as no integrity at all, but it does
+mean you are trusting GitHub Pages rather than a signature. See
+[Signing the remote](#signing-the-remote) to turn signing on for your own fork.
+
+There is also a single-file bundle on the [`continuous`
+release](https://github.com/dixonSolutions/Xylitol/releases/tag/continuous) and
+at `https://dixonsolutions.github.io/Xylitol/xylitol.flatpak`:
+
+```sh
+flatpak install --bundle xylitol.flatpak
+```
+
+A bundle does not update itself. Use the remote if you want `flatpak update` to
+work.
+
+#### What the sandbox allows
+
+Xylitol asks for network access, a Wayland or X11 socket, and
+`--talk-name=org.freedesktop.Flatpak`. That last one lets it run commands on the
+host through `flatpak-spawn --host`, which is the only way a sandboxed app can
+drive Waydroid or `adb`. It is a broad permission — an app that can spawn host
+processes is not meaningfully confined — so it is worth knowing it is there.
+
+Revoking it leaves everything except installing:
+
+```sh
+flatpak override --user --notalk-name=org.freedesktop.Flatpak dev.xylitol.Xylitol
+```
+
+Searching, downloading and inspecting all still work; the Install button will
+report that no runtime is reachable. You can still install the downloaded file
+yourself with `waydroid app install` or `adb install` on the host.
+
 ### Build requirements
 
 - Rust 1.82 or newer
@@ -61,6 +113,36 @@ cargo build --release
 ./target/release/xylitol          # the app
 ./target/release/xylitol-cli      # the same thing, headless
 ```
+
+### Flatpak, from source
+
+```sh
+flatpak install --user flathub org.gnome.Platform//48 org.gnome.Sdk//48 \
+    org.freedesktop.Sdk.Extension.rust-stable//24.08
+flatpak-builder --user --install --force-clean \
+    build/flatpak build-aux/flatpak/dev.xylitol.Xylitol.yml
+```
+
+The manifest resolves crates from the network during the build rather than
+carrying a generated `cargo-sources.json`. That is one less file to regenerate
+on every dependency bump, and it is fine for a self-hosted remote — but Flathub
+forbids it, so a submission there would need the offline sources adding.
+
+### Signing the remote
+
+The release pipeline signs the repository when a `FLATPAK_GPG_PRIVATE_KEY`
+secret is present, and publishes unsigned when it is not. To turn it on in your
+own fork:
+
+```sh
+gpg --quick-generate-key "Xylitol Releases <you@example.com>" default default never
+gpg --export-secret-keys --armor <KEY_ID> | base64 -w0 | \
+    gh secret set FLATPAK_GPG_PRIVATE_KEY
+```
+
+The next push to `main` will sign the repo and embed the public key in
+`xylitol.flatpakrepo`, after which `--no-gpg-verify` is no longer needed. Anyone
+who added the remote while it was unsigned should remove and re-add it.
 
 ## Using the command line
 
@@ -127,6 +209,10 @@ Add `--json` to any command for machine-readable output.
 Override with `XYLITOL_DOWNLOAD_DIR` and `XYLITOL_STATE_DIR`. Set `XYLITOL_LOG`
 (`error`, `warn`, `info`, `debug`) for logging.
 
+Under Flatpak these land in `~/.var/app/dev.xylitol.Xylitol/`. That is a real
+directory on the host, which is why a host-side `waydroid` or `adb` can read a
+package Xylitol downloaded without anything being copied out of the sandbox.
+
 ## How it is put together
 
 | Crate | Responsibility |
@@ -160,6 +246,20 @@ The live tests are `#[ignore]`d by default. APKPure rate-limits by address and
 answers `429` with a `Retry-After` measured in tens of minutes, so running them
 in a loop is a good way to lock yourself out for an hour. The client honours
 `Retry-After` and backs off; the tests do not retry for you.
+
+## Releases
+
+`main` is the release branch. Every commit to it runs
+[`release.yml`](.github/workflows/release.yml), which builds the Flatpak,
+publishes the ostree repository to GitHub Pages, and refreshes a rolling
+`continuous` GitHub Release with the bundle attached.
+
+The Pages site is rebuilt from scratch each time rather than accumulating in a
+branch, which keeps binary blobs out of git history. The trade-off is that
+clients re-fetch the app rather than applying a delta.
+
+There is no tagged, versioned release yet. When there is, it will be cut by tag
+and the `continuous` build will stay where it is.
 
 ## What Xylitol does not do
 

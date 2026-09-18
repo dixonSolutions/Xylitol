@@ -56,14 +56,18 @@ pub async fn detect() -> Vec<Status> {
 }
 
 async fn probe(backend: Backend) -> Status {
-    let Some(_) = which(backend.command()) else {
+    if !is_available(backend.command()).await {
         return Status {
             backend,
             installed: false,
             ready: false,
-            detail: format!("`{}` is not installed", backend.command()),
+            detail: if is_sandboxed() {
+                format!("`{}` is not installed on the host", backend.command())
+            } else {
+                format!("`{}` is not installed", backend.command())
+            },
         };
-    };
+    }
 
     let (args, ready_if): (&[&str], fn(&str) -> bool) = match backend {
         // `waydroid status` prints `Session:\tRUNNING` once the container is up.
@@ -198,12 +202,45 @@ pub async fn launch(
     }
 }
 
+/// Whether this process is running inside a Flatpak sandbox.
+///
+/// Waydroid and adb live on the host, and the sandbox cannot see them, so every
+/// command has to be sent out through the portal instead.
+pub fn is_sandboxed() -> bool {
+    std::path::Path::new("/.flatpak-info").exists()
+}
+
+/// Build the command line actually executed, escaping the sandbox when needed.
+fn command_line<'a>(program: &'a str, args: &[&'a str]) -> (String, Vec<String>) {
+    if is_sandboxed() {
+        let mut spawned = vec!["--host".to_string(), program.to_string()];
+        spawned.extend(args.iter().map(|a| a.to_string()));
+        ("flatpak-spawn".to_string(), spawned)
+    } else {
+        (
+            program.to_string(),
+            args.iter().map(|a| a.to_string()).collect(),
+        )
+    }
+}
+
 async fn run(program: &str, args: &[&str]) -> anyhow::Result<String> {
-    let output = tokio::process::Command::new(program)
-        .args(args)
+    let (binary, full_args) = command_line(program, args);
+    let output = tokio::process::Command::new(&binary)
+        .args(&full_args)
         .output()
         .await
-        .map_err(|e| anyhow::anyhow!("could not run `{program}`: {e}"))?;
+        .map_err(|e| {
+            if is_sandboxed() {
+                anyhow::anyhow!(
+                    "could not reach the host to run `{program}`: {e}. The Flatpak \
+                     needs the org.freedesktop.Flatpak talk-name permission to drive \
+                     Waydroid or adb."
+                )
+            } else {
+                anyhow::anyhow!("could not run `{program}`: {e}")
+            }
+        })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -226,6 +263,17 @@ async fn run(program: &str, args: &[&str]) -> anyhow::Result<String> {
             }
         ))
     }
+}
+
+/// Whether `program` can be run, looking on the host when sandboxed.
+async fn is_available(program: &str) -> bool {
+    if is_sandboxed() {
+        // PATH inside the sandbox says nothing about the host, so ask the host.
+        return run("sh", &["-c", &format!("command -v {program}")])
+            .await
+            .is_ok();
+    }
+    which(program).is_some()
 }
 
 fn which(program: &str) -> Option<PathBuf> {
@@ -252,6 +300,15 @@ mod tests {
     fn which_finds_a_real_binary_and_not_a_fake_one() {
         assert!(which("sh").is_some());
         assert!(which("definitely-not-a-real-binary-xyzzy").is_none());
+    }
+
+    #[test]
+    fn outside_a_sandbox_commands_run_directly() {
+        // The test suite does not run under Flatpak, so this is the real path.
+        assert!(!is_sandboxed());
+        let (binary, args) = command_line("waydroid", &["app", "install", "/tmp/x.apk"]);
+        assert_eq!(binary, "waydroid");
+        assert_eq!(args, ["app", "install", "/tmp/x.apk"]);
     }
 
     #[tokio::test]

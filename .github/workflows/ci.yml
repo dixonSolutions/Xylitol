@@ -19,7 +19,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            libgtk-4-dev libadwaita-1-dev
+            libgtk-4-dev libadwaita-1-dev desktop-file-utils appstream
+
+      - name: Validate the desktop and AppStream metadata
+        run: |
+          desktop-file-validate data/dev.xylitol.Xylitol.desktop
+          appstreamcli validate --no-net data/dev.xylitol.Xylitol.metainfo.xml
 
       - uses: dtolnay/rust-toolchain@stable
         with:
