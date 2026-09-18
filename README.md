@@ -108,8 +108,12 @@ Inspect anything you have, whether Xylitol downloaded it or not:
 xylitol-cli inspect ~/Downloads/something.apk
 xylitol-cli library list
 xylitol-cli runtime status
-xylitol-cli runtime install 'org.videolan.vlc@13070105#base'
+xylitol-cli runtime install 'org.videolan.vlc@13070105#armeabi-v7a'
 ```
+
+A library key is `package@versionCode#what-makes-it-distinct`, where the last
+part is the ABI, `bundle`, a split name, or `base`. Two files of the same
+version therefore never collide.
 
 Add `--json` to any command for machine-readable output.
 
