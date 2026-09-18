@@ -87,3 +87,37 @@ fn arbitrary_bytes_are_an_error_not_a_panic() {
     assert!(parse_manifest(b"not xml at all").is_err());
     assert!(parse_manifest(&[0xff; 512]).is_err());
 }
+
+/// Flappy Bird 1.3, built in 2013 with a much older `aapt`. Eleven years of
+/// toolchain drift separate it from the F-Droid manifest above, which is the
+/// point: the format is supposed to be stable, and this is the evidence.
+const OLD_MANIFEST: &[u8] = include_bytes!("fixtures/flappybird-AndroidManifest.xml");
+
+#[test]
+fn reads_a_manifest_from_2013() {
+    let info = parse_manifest(OLD_MANIFEST).expect("an old manifest should decode");
+
+    assert_eq!(info.package, "com.dotgears.flappybird");
+    assert_eq!(info.version_name.as_deref(), Some("1.3"));
+    assert_eq!(info.version_code, Some(4));
+    assert_eq!(
+        info.min_sdk,
+        Some(8),
+        "Android 2.2, which is the era this is from"
+    );
+    assert_eq!(info.target_sdk, Some(15));
+    assert_eq!(
+        info.permissions,
+        vec![
+            "android.permission.WAKE_LOCK",
+            "android.permission.INTERNET",
+            "android.permission.ACCESS_NETWORK_STATE",
+        ]
+    );
+    // The launcher activity lives under a different package prefix to the
+    // application id, so it must be read literally rather than assumed.
+    assert_eq!(
+        info.launchable_activities,
+        vec!["com.dotgears.flappy.SplashScreen"]
+    );
+}
