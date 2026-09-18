@@ -1,0 +1,26 @@
+[package]
+name = "xylitol-core"
+description = "Xylitol's shared logic: download library, package store and Android runtime integration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+xylitol-apk = { path = "../xylitol-apk", version = "0.1.0" }
+xylitol-apkpure = { path = "../xylitol-apkpure", version = "0.1.0" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
+dirs = "5"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+time = { version = "0.3", features = ["formatting", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["rt", "macros"] }

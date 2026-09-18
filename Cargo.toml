@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/xylitol-apk",
+    "crates/xylitol-apkpure",
+    "crates/xylitol-core",
+    "crates/xylitol-cli",
+    "crates/xylitol-gui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/dixonSolutions/Xylitol"
+authors = ["The Xylitol contributors"]
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync", "time"] }
+futures-util = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

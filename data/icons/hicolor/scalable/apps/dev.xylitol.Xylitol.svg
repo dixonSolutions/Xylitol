@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="crystal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#99c1f1"/>
+      <stop offset="1" stop-color="#3584e4"/>
+    </linearGradient>
+    <linearGradient id="facet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- A sugar crystal: xylitol, and a package worth unwrapping. -->
+  <path d="M64 12 110 38v52L64 116 18 90V38Z" fill="url(#crystal)"/>
+  <path d="M64 12 110 38 64 64 18 38Z" fill="url(#facet)"/>
+  <path d="M64 12 110 38v52L64 116 18 90V38Z" fill="none"
+        stroke="#1a5fb4" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M64 64v52M64 64 18 38M64 64l46-26" fill="none"
+        stroke="#1a5fb4" stroke-width="3" stroke-opacity=".45"/>
+  <!-- Downward arrow: what the app is for. -->
+  <path d="M64 44v34" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+  <path d="M48 66 64 82l16-16" fill="none" stroke="#ffffff" stroke-width="9"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.xylitol.Xylitol</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Xylitol</name>
+  <summary>Find, download and install Android packages</summary>
+
+  <description>
+    <p>
+      Xylitol searches APKPure, shows every file a release ships — one per
+      architecture, sometimes per screen density, sometimes a bundle beside a
+      plain APK — and lets you choose which to download rather than guessing
+      for you.
+    </p>
+    <p>
+      Downloads resume where they stopped and are checked against the checksum
+      APKPure publishes. Xylitol reads the package itself, so it can show the
+      real package name, version, architectures and requested permissions
+      before anything is installed.
+    </p>
+    <p>
+      Installing is handed to an Android runtime already on the system:
+      Waydroid, or any device reachable over adb.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">dev.xylitol.Xylitol.desktop</launchable>
+  <url type="homepage">https://github.com/dixonSolutions/Xylitol</url>
+  <url type="bugtracker">https://github.com/dixonSolutions/Xylitol/issues</url>
+
+  <categories>
+    <category>System</category>
+    <category>PackageManager</category>
+  </categories>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-09-18">
+      <description>
+        <p>First release: APKPure search, per-architecture file selection,
+        resumable verified downloads, package inspection, and installation
+        through Waydroid or adb.</p>
+      </description>
+    </release>
+  </releases>
+</component>
