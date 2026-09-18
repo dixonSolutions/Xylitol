@@ -136,6 +136,14 @@ pub fn inspect(path: impl AsRef<Path>) -> Result<PackageInfo, Error> {
     Ok(info)
 }
 
+/// Read a binary `AndroidManifest.xml` on its own.
+///
+/// The file-level fields (`file_size`, `sha256`, `abis`) are left empty, since
+/// a manifest carries none of them. [`inspect`] fills them in.
+pub fn parse_manifest(manifest: &[u8]) -> Result<PackageInfo, Error> {
+    from_manifest(manifest)
+}
+
 fn from_manifest(manifest: &[u8]) -> Result<PackageInfo, Error> {
     let root = axml::parse(manifest)?;
 
